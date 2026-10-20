@@ -393,7 +393,7 @@ td input[readonly]{opacity:.75;cursor:not-allowed}
 <header class="top">
   <img id="logoTop" alt="Comercial Anaiz">
   <div><h2>IMPORT TEXTIL ANAIZ EIRL</h2><small>Registro de tienda</small></div>
-  <span class="sp"></span><div class="pill" id="hoyPill"></div><button class="b sec" id="btnOut" type="button" title="Cerrar sesión">Salir</button>
+  <span class="sp"></span><span id="cloud" style="font-size:12px;color:var(--mu);white-space:nowrap">☁ Conectando…</span><div class="pill" id="hoyPill"></div><button class="b sec" id="btnOut" type="button" title="Cerrar sesión">Salir</button>
 </header>
 <!-- REGISTRAR -->
 <section class="view on" id="v-reg">
@@ -590,7 +590,7 @@ td input[readonly]{opacity:.75;cursor:not-allowed}
 var DEF={"coreano":9.5,"hipora":14.5,"winstoper":16,"piel de conejo":11.7,"acolchado":10.2,"micropolar":5.5,"microcarnero":15,"taslan panal":7.5,"fluortex":3,"soft":4.5,"piel de tiburon":18.5,"termoreflectivo":9,"walon":8.5,"taslan poliester":7,"taslancuadros":8.5};
 var mem={};
 function ld(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):(mem[k]||d)}catch(e){return mem[k]||d}}
-function sv(k,v){mem[k]=v;try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+function sv(k,v){mem[k]=v;try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}if(window.cloudSave)cloudSave(k,v)}
 var prices=ld("rt_prices",DEF), hist=ld("rt_hist",[]), lastId=null;
 var $=function(i){return document.getElementById(i)};
 function fmt(n){return Number(n).toFixed(2)}
@@ -1235,6 +1235,102 @@ renderSel();renderPrices();renderRollos();calc();renderHist();
   });
   $("btnOut").addEventListener("click",function(){setOk(false);$("lgU").value="";show()});
   show();
+})();
+</script>
+
+<script>
+/* ===== GUARDADO EN LA NUBE (Firebase Firestore, proyecto tela-e02d6) ===== */
+(function(){
+  var CFG={apiKey:"AIzaSyDpSvGBbYbJ2BNDTBHTr47vVHZ6-XKIy_c",authDomain:"tela-e02d6.firebaseapp.com",projectId:"tela-e02d6",storageBucket:"tela-e02d6.firebasestorage.app",messagingSenderId:"188862613884",appId:"1:188862613884:web:0da52d7c19e3bf840a7cf9"};
+  var COL="tela_data",CH=700000,KEYS=["rt_prices","rt_hist","rt_vars","rt_stockr","rt_rollos","rt_alerta"];
+  var fs=null,db=null,pend={},timer=null,flushing=false,total={},retry=null;
+  function st(t,c,tip){var e=$("cloud");e.textContent=t;e.style.color=c||"var(--mu)";e.title=tip||""}
+  function errMsg(e){
+    var c=(e&&e.code)||"",m=(e&&e.message)||String(e);
+    if(c==="permission-denied")return "⚠ Firebase bloquea el guardado (revisa las reglas de Firestore)";
+    if(/does not exist|not-found|failed-precondition/i.test(c+" "+m))return "⚠ Falta crear la base de datos Firestore";
+    if(c==="unavailable"||!navigator.onLine)return "⚠ Sin internet · se guardará al volver";
+    return "⚠ No se pudo guardar en la nube";
+  }
+  function getVal(k){return k==="rt_prices"?prices:k==="rt_hist"?hist:k==="rt_vars"?vars:k==="rt_stockr"?stock:k==="rt_rollos"?rollos:alerta}
+  function setVal(k,v){
+    if(k==="rt_prices")prices=v;else if(k==="rt_hist")hist=v;else if(k==="rt_vars")vars=v;
+    else if(k==="rt_stockr")stock=v;else if(k==="rt_rollos")rollos=v;else if(k==="rt_alerta")alerta=v;
+    mem[k]=v;try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}
+  }
+  function d(id){return fs.doc(db,COL,id)}
+  function writeKey(k,v){
+    var str=JSON.stringify(v),n=Math.max(1,Math.ceil(str.length/CH)),ps=[],i;
+    for(i=0;i<n;i++)ps.push(fs.setDoc(d(k+"__"+i),{s:str.slice(i*CH,(i+1)*CH)}));
+    return Promise.all(ps).then(function(){
+      var old=total[k]||0,dl=[];
+      for(i=n;i<old;i++)dl.push(fs.deleteDoc(d(k+"__"+i)));
+      return Promise.all(dl);
+    }).then(function(){return fs.setDoc(d(k),{total:n,t:Date.now()})}).then(function(){total[k]=n});
+  }
+  function readKey(k){
+    return fs.getDoc(d(k)).then(function(m){
+      if(!m.exists())return undefined;
+      var n=m.data().total||1,ps=[],i;total[k]=n;
+      for(i=0;i<n;i++)ps.push(fs.getDoc(d(k+"__"+i)));
+      return Promise.all(ps).then(function(r){
+        var str=r.map(function(x){return x.exists()?x.data().s:""}).join("");
+        return JSON.parse(str);
+      });
+    });
+  }
+  function flush(){
+    if(!db||flushing)return;
+    var keys=Object.keys(pend);if(!keys.length)return;
+    var batch=pend;pend={};flushing=true;st("☁ Guardando…");
+    Promise.all(keys.map(function(k){return writeKey(k,batch[k])})).then(function(){
+      flushing=false;
+      if(Object.keys(pend).length){flush();return}
+      st("☁ Guardado","var(--ok)");
+    }).catch(function(e){
+      flushing=false;
+      keys.forEach(function(k){if(!(k in pend))pend[k]=batch[k]});
+      st(errMsg(e),"var(--rd)",(e&&e.message)||"");
+      clearTimeout(retry);retry=setTimeout(flush,8000);
+    });
+  }
+  window.cloudSave=function(k,v){
+    if(KEYS.indexOf(k)<0)return;
+    pend[k]=v;st("☁ Guardando…");
+    clearTimeout(timer);timer=setTimeout(flush,500);
+  };
+  function rerender(){
+    renderSel();renderPrices();renderRollos();calc();renderHist();
+    $("alerta").value=alerta;
+    if($("v-das").classList.contains("on"))renderDash();
+    if($("v-ds").classList.contains("on"))renderDS();
+  }
+  function pull(first){
+    if(!db||flushing||Object.keys(pend).length)return Promise.resolve();
+    return Promise.all(KEYS.map(readKey)).then(function(vals){
+      var any=false,ch=false;
+      vals.forEach(function(v,i){
+        if(v===undefined)return;any=true;
+        if(JSON.stringify(v)!==JSON.stringify(getVal(KEYS[i]))){setVal(KEYS[i],v);ch=true}
+      });
+      if(!any&&first){
+        /* la nube está vacía: subimos lo que ya hay en este navegador */
+        KEYS.forEach(function(k){pend[k]=getVal(k)});flush();return;
+      }
+      if(ch)rerender();
+      st("☁ Guardado","var(--ok)");
+    }).catch(function(e){st(errMsg(e),"var(--rd)",(e&&e.message)||"")});
+  }
+  var V="10.12.2",B="https://www.gstatic.com/firebasejs/"+V+"/";
+  Promise.all([import(B+"firebase-app.js"),import(B+"firebase-firestore.js")]).then(function(m){
+    fs=m[1];db=fs.getFirestore(m[0].initializeApp(CFG));
+    return pull(true).then(function(){if(Object.keys(pend).length)flush()});
+  }).catch(function(e){st("⚠ No se pudo conectar con Firebase","var(--rd)",(e&&e.message)||"")});
+  document.addEventListener("visibilitychange",function(){
+    if(document.visibilityState==="visible")pull(false);
+    else if(Object.keys(pend).length){clearTimeout(timer);flush()}
+  });
+  window.addEventListener("online",function(){flush();pull(false)});
 })();
 </script>
 </body>
