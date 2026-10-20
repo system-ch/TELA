@@ -362,6 +362,10 @@ td input[readonly]{opacity:.75;cursor:not-allowed}
 .lg-ft{margin-top:8px;text-align:center;font-size:11px;color:rgba(255,255,255,.65)}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#16202b">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 </head>
 <body>
 <div id="login">
@@ -1331,6 +1335,28 @@ renderSel();renderPrices();renderRollos();calc();renderHist();
     else if(Object.keys(pend).length){clearTimeout(timer);flush()}
   });
   window.addEventListener("online",function(){flush();pull(false)});
+})();
+</script>
+<!-- BOTÓN INSTALAR APP -->
+<button id="btnInstalar" type="button" title="Instalar como icono de escritorio">⬇ Instalar app</button>
+<style>
+#btnInstalar{position:fixed;right:0;top:50%;z-index:9999;transform:translateY(-50%) rotate(-90deg);transform-origin:right bottom;background:var(--ac);color:#fff;border:0;padding:9px 16px;border-radius:10px 10px 0 0;font:700 13px system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+#btnInstalar:hover{filter:brightness(1.1)}
+</style>
+<script>
+(function(){
+  var ev=null,btn=document.getElementById("btnInstalar");
+  window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();ev=e});
+  btn.addEventListener("click",function(){
+    if(ev){ev.prompt();ev.userChoice.then(function(){ev=null});return}
+    if(/iphone|ipad/i.test(navigator.userAgent)){alert('En Safari: toca Compartir y luego "Agregar a inicio".');return}
+    var a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob(["[InternetShortcut]\r\nURL="+location.href.split("#")[0]+"\r\n"],{type:"text/plain"}));
+    a.download="Comercial Anaiz.url";a.click();setTimeout(function(){URL.revokeObjectURL(a.href)},1000);
+  });
+  window.addEventListener("appinstalled",function(){btn.style.display="none"});
+  if(matchMedia("(display-mode: standalone)").matches)btn.style.display="none";
+  if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(function(){});
 })();
 </script>
 </body>
