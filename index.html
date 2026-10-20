@@ -1349,7 +1349,9 @@ renderSel();renderPrices();renderRollos();calc();renderHist();
   window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();ev=e});
   btn.addEventListener("click",function(){
     if(ev){ev.prompt();ev.userChoice.then(function(){ev=null});return}
-    if(/iphone|ipad/i.test(navigator.userAgent)){alert('En Safari: toca Compartir y luego "Agregar a inicio".');return}
+    var ua=navigator.userAgent;
+    if(/iphone|ipad|ipod/i.test(ua)){alert('En iPhone (Safari): toca el botón Compartir (cuadrado con flecha) y luego "Agregar a inicio".');return}
+    if(/android/i.test(ua)){alert('En Android (Chrome): toca los 3 puntos ⋮ arriba a la derecha y elige "Instalar aplicación" o "Agregar a la pantalla de inicio".');return}
     var a=document.createElement("a");
     a.href=URL.createObjectURL(new Blob(["[InternetShortcut]\r\nURL="+location.href.split("#")[0]+"\r\n"],{type:"text/plain"}));
     a.download="Comercial Anaiz.url";a.click();setTimeout(function(){URL.revokeObjectURL(a.href)},1000);
