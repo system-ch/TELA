@@ -509,10 +509,10 @@ td input[readonly]{opacity:.75;cursor:not-allowed}
 <section class="view" id="v-hs">
   <h1>Historial de stock</h1>
   <div class="card">
-    <h2 style="margin:0 0 10px;font-size:16px">Stock actual</h2>
+    <div class="row" style="margin-top:0;margin-bottom:10px"><h2 style="margin:0;font-size:16px">Stock actual</h2><span class="sp"></span><button class="b" id="btnXlsStock">Descargar</button></div>
     <div class="scroll"><table class="tb"><thead><tr><th>Calidad</th><th>Código · Color</th><th class="c">Rollos en stock</th><th>Estado</th></tr></thead><tbody id="stkNow"></tbody></table></div>
   </div>
-  <div class="card">
+  <div class="card" style="display:none">
     <div class="row" style="margin-top:0">
       <div><label>Desde</label><input type="date" id="sd"></div>
       <div><label>Hasta</label><input type="date" id="sh"></div>
@@ -847,6 +847,94 @@ $("btnXlsRoll").addEventListener("click",function(){
     var csv="\ufeff"+reg.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"'}).join(",")}).join("\r\n");
     var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));a.download=name+".csv";document.body.appendChild(a);a.click();document.body.removeChild(a);
   }
+});
+
+function stockRows(){
+  var out=[],ks=Object.keys(prices);
+  Object.keys(stock).forEach(function(k){if(ks.indexOf(k)<0)ks.push(k)});
+  ks.forEach(function(k){
+    var vs=vars[k]||[];
+    if(vs.length)vs.forEach(function(v){out.push({cal:k,cod:v.cod||"",color:v.color||"",q:parseFloat(v.q)||0})});
+    else out.push({cal:k,cod:"",color:"",q:stock[k]});
+  });
+  return out;
+}
+function stockXlsFallback(rows,name){
+  var A=[["Calidad","Código","Color","Rollos en stock","Estado"]].concat(rows.map(function(r){return [r.cal,r.cod,r.color,r.q===undefined?"":r.q,stEstado(r.q).t]}));
+  if(window.XLSX){
+    var ws=XLSX.utils.aoa_to_sheet(A);ws["!cols"]=[{wch:16},{wch:16},{wch:20},{wch:16},{wch:20}];
+    var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Stock");XLSX.writeFile(wb,name+".xlsx");
+  }else{
+    var csv="\ufeff"+A.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"'}).join(",")}).join("\r\n");
+    var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));a.download=name+".csv";document.body.appendChild(a);a.click();document.body.removeChild(a);
+  }
+}
+function loadExcelJS(cb){
+  if(window.ExcelJS)return cb(true);
+  var s=document.createElement("script");
+  s.src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js";
+  s.onload=function(){cb(!!window.ExcelJS)};s.onerror=function(){cb(false)};
+  document.head.appendChild(s);
+}
+$("btnXlsStock").addEventListener("click",function(){
+  var rows=stockRows(),name="stock_"+today();
+  if(!rows.length){alert("No hay stock para descargar.");return}
+  var btn=$("btnXlsStock"),old=btn.textContent;btn.textContent="Preparando…";btn.disabled=true;
+  loadExcelJS(function(ok){
+    btn.textContent=old;btn.disabled=false;
+    if(!ok){stockXlsFallback(rows,name);return}
+    var wb=new ExcelJS.Workbook(),ws=wb.addWorksheet("Stock",{views:[{state:"frozen",ySplit:5,showGridLines:false}]});
+    var thin={style:"thin",color:{argb:"FFD1D5DB"}},BR={top:thin,left:thin,bottom:thin,right:thin};
+    var FILL={ok:["FFD1FAE5","FF065F46"],w:["FFFEF3C7","FF92400E"],r:["FFFEE2E2","FF991B1B"],nv:["FFE5E7EB","FF374151"]};
+    ws.columns=[{width:18},{width:18},{width:22},{width:18},{width:22}];
+    var tot=0,nOk=0,nW=0,nR=0;
+    rows.forEach(function(r){if(r.q!==undefined)tot+=r.q;var c=stEstado(r.q).c;if(c==="ok")nOk++;else if(c==="w")nW++;else if(c==="r")nR++});
+    tot=r2(tot);
+    ws.mergeCells("A1:E1");var t=ws.getCell("A1");t.value="IMPORT TEXTIL ANAIZ EIRL";t.font={bold:true,size:16,color:{argb:"FF1E3A8A"}};t.alignment={vertical:"middle"};ws.getRow(1).height=26;
+    ws.mergeCells("A2:E2");var st=ws.getCell("A2");st.value="Stock actual · "+dmy(today());st.font={size:11,color:{argb:"FF6B7280"}};
+    ws.mergeCells("A3:E3");var rs=ws.getCell("A3");rs.value="Total: "+tot+" rollos   |   Hay tela: "+nOk+"   |   Pronto a agotarse: "+nW+"   |   Sin tela: "+nR;rs.font={bold:true,size:11,color:{argb:"FF111827"}};
+    var hr=ws.getRow(5);
+    ["Calidad","Código","Color","Rollos en stock","Estado"].forEach(function(h,i){
+      var c=hr.getCell(i+1);c.value=h;c.font={bold:true,color:{argb:"FFFFFFFF"}};
+      c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1E3A8A"}};c.border=BR;
+      c.alignment={horizontal:i===3||i===4?"center":"left",vertical:"middle"};
+    });
+    hr.height=24;
+    rows.forEach(function(r,i){
+      var e=stEstado(r.q),row=ws.getRow(6+i);
+      row.values=[r.cal,r.cod,r.color,r.q===undefined?"":r.q,e.t];
+      row.height=20;
+      for(var j=1;j<=5;j++){
+        var c=row.getCell(j);c.border=BR;c.alignment={vertical:"middle",horizontal:j>=4?"center":"left"};
+        if(i%2)c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFF9FAFB"}};
+      }
+      row.getCell(1).font={bold:true};
+      var q=row.getCell(4);q.font={bold:true,color:{argb:FILL[e.c][1]}};q.fill={type:"pattern",pattern:"solid",fgColor:{argb:FILL[e.c][0]}};
+      var s=row.getCell(5);s.font={color:{argb:FILL[e.c][1]}};s.fill={type:"pattern",pattern:"solid",fgColor:{argb:FILL[e.c][0]}};
+    });
+    var last=5+rows.length,tr=ws.getRow(last+1);
+    tr.getCell(1).value="TOTAL";tr.getCell(4).value={formula:"SUM(D6:D"+last+")",result:tot};
+    for(var j=1;j<=5;j++){var c=tr.getCell(j);c.font={bold:true};c.border={top:{style:"medium",color:{argb:"FF1E3A8A"}},bottom:thin};c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFDBEAFE"}};c.alignment={horizontal:j===4?"center":"left",vertical:"middle"}}
+    tr.height=22;
+    ws.autoFilter={from:{row:5,column:1},to:{row:last,column:5}};
+    ws.pageSetup={orientation:"portrait",fitToPage:true,fitToWidth:1,fitToHeight:0};
+    /* hoja resumen por calidad */
+    var rm=wb.addWorksheet("Resumen por calidad",{views:[{showGridLines:false}]});
+    rm.columns=[{width:20},{width:14},{width:18},{width:20}];
+    var hh=rm.getRow(1);
+    ["Calidad","Colores","Rollos en stock","Por agotarse / sin tela"].forEach(function(h,i){var c=hh.getCell(i+1);c.value=h;c.font={bold:true,color:{argb:"FFFFFFFF"}};c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1E3A8A"}};c.border=BR;c.alignment={horizontal:i?"center":"left",vertical:"middle"}});
+    hh.height=24;
+    var by={},ord=[];
+    rows.forEach(function(r){if(!by[r.cal]){by[r.cal]={n:0,q:0,low:0};ord.push(r.cal)}var g=by[r.cal];g.n++;if(r.q!==undefined)g.q+=r.q;var c=stEstado(r.q).c;if(c==="w"||c==="r")g.low++});
+    ord.forEach(function(k,i){var g=by[k],row=rm.getRow(2+i);row.values=[k,g.n,r2(g.q),g.low];row.height=20;
+      for(var j=1;j<=4;j++){var c=row.getCell(j);c.border=BR;c.alignment={vertical:"middle",horizontal:j>1?"center":"left"}}
+      row.getCell(1).font={bold:true};row.getCell(3).font={bold:true};
+      if(g.low){row.getCell(4).font={bold:true,color:{argb:"FF92400E"}};row.getCell(4).fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFEF3C7"}}}});
+    wb.xlsx.writeBuffer().then(function(buf){
+      var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+      a.download=name+".xlsx";document.body.appendChild(a);a.click();document.body.removeChild(a);
+    }).catch(function(){stockXlsFallback(rows,name)});
+  });
 });
 
 /* ventana Registrar */
