@@ -509,6 +509,10 @@ td input[readonly]{opacity:.75;cursor:not-allowed}
 <section class="view" id="v-hs">
   <h1>Historial de stock</h1>
   <div class="card">
+    <h2 style="margin:0 0 10px;font-size:16px">Stock actual</h2>
+    <div class="scroll"><table class="tb"><thead><tr><th>Calidad</th><th>Código · Color</th><th class="c">Rollos en stock</th><th>Estado</th></tr></thead><tbody id="stkNow"></tbody></table></div>
+  </div>
+  <div class="card">
     <div class="row" style="margin-top:0">
       <div><label>Desde</label><input type="date" id="sd"></div>
       <div><label>Hasta</label><input type="date" id="sh"></div>
@@ -776,7 +780,23 @@ function rollosGrp(){
   return {gs:gs,max:max};
 }
 function qCls(r){var lo=r.quedan!==undefined&&r.quedan<=alerta;return r.quedan===undefined?"nv":(r.quedan<=0?"r":(lo?"w":"ok"))}
+function renderStkNow(){
+  var h="",ks=Object.keys(prices);
+  Object.keys(stock).forEach(function(k){if(ks.indexOf(k)<0)ks.push(k)});
+  ks.forEach(function(k){
+    var vs=vars[k]||[];
+    var tag=function(q){var e=stEstado(q);return '<span class="pl '+e.c+'">'+(q===undefined?"—":q)+'</span>'};
+    var est=function(q){return stEstado(q).t};
+    var cal='<td class="cal"><i style="--h:'+hue(k)+'"></i>'+esc(k)+'</td>';
+    if(vs.length){
+      vs.forEach(function(v,i){var q=parseFloat(v.q)||0;h+='<tr>'+(i===0?cal:'<td></td>')+'<td>'+esc((v.cod||"")+(v.color?" · "+v.color:""))+'</td><td class="c">'+tag(q)+'</td><td>'+est(q)+'</td></tr>'});
+      h+='<tr><td></td><td style="text-align:right;color:var(--mu)">Total '+esc(k)+'</td><td class="c"><b>'+vsum(k)+'</b></td><td></td></tr>';
+    }else h+='<tr>'+cal+'<td></td><td class="c">'+tag(stock[k])+'</td><td>'+est(stock[k])+'</td></tr>';
+  });
+  $("stkNow").innerHTML=h||'<tr><td colspan="4" style="color:var(--mu)">Aún no hay telas ni stock cargado. Cárgalo en la pestaña Stock.</td></tr>';
+}
 function renderRollos(){
+  renderStkNow();
   var G=rollosGrp(),gs=G.gs,max=Math.max(G.max,1);
   var h='<tr><th>Calidad</th><th class="c">Cantidad de rollos</th><th>Fecha</th><th class="c">Cantidad de tela (rollos)</th><th class="c">Quedan (total − cantidad)</th>';
   for(var n=1;n<max;n++)h+='<th>Fecha</th><th class="c">Cantidad de tela (rollos)</th><th class="c">Quedan (total − cantidad)</th>';
